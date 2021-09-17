@@ -3,81 +3,109 @@ package client
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"math/rand"
+	"net/http"
 )
 
-const defaultScratchBufferSize = 64 * 1024
+var errBufTooSmall = errors.New("buffer is too small to fit a single message")
 
-//Basic represnts an instance of queue
-type Basic struct {
-	addrs   []string
-	buf     bytes.Buffer
-	restBuf bytes.Buffer
+const defaultScratchSize = 64 * 1024
+
+// Simple represents an instance of client connected to a set of servers.
+type Simple struct {
+	addrs []string
+	cl    *http.Client
+	off   uint64
 }
 
-var errBufTooSmall = errors.New("buffer is too small to fit the message")
-
-//NewBasic creates a new instance of client
-func NewBasic(addrs []string) *Basic {
-	return &Basic{
+// NewSimple creates a new client for the server.
+func NewSimple(addrs []string) *Simple {
+	return &Simple{
 		addrs: addrs,
+		cl:    &http.Client{},
 	}
 }
 
-func (c *Basic) Send(msgs []byte) error {
-	_, err := c.buf.Write(msgs)
-	return err
+// Send sends the messages to the servers.
+func (s *Simple) Send(msgs []byte) error {
+	resp, err := s.cl.Post(s.addrs[0]+"/write", "application/octet-stream", bytes.NewReader(msgs))
+	if err != nil {
+		return err
+	}
 
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var b bytes.Buffer
+		io.Copy(&b, resp.Body)
+		return fmt.Errorf("http code %d, %s", resp.StatusCode, b.String())
+	}
+
+	io.Copy(ioutil.Discard, resp.Body)
+	return nil
 }
 
-func (c *Basic) Receive(scratch []byte) ([]byte, error) {
+// Receive will either wait for new messages or return an
+// error in case something goes wrong.
+// The scratch buffer can be used to read the data.
+func (s *Simple) Receive(scratch []byte) ([]byte, error) {
 	if scratch == nil {
-		scratch = make([]byte, defaultScratchBufferSize)
+		scratch = make([]byte, defaultScratchSize)
 	}
 
-	off := 0
+	addrIdx := rand.Intn(len(s.addrs))
+	addr := s.addrs[addrIdx]
+	readURL := fmt.Sprintf("%s/read?off=%d&maxSize=%d", addr, s.off, len(scratch))
 
-	if c.restBuf.Len() > 0 {
-		if c.restBuf.Len() >= len(scratch) {
-			return nil, errBufTooSmall
-		}
-		n, err := c.restBuf.Read(scratch)
-		if err != nil {
+	resp, err := s.cl.Get(readURL)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var b bytes.Buffer
+		io.Copy(&b, resp.Body)
+		return nil, fmt.Errorf("http code %d, %s", resp.StatusCode, b.String())
+	}
+
+	b := bytes.NewBuffer(scratch[0:0])
+	_, err = io.Copy(b, resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// 0 bytes read but no errors means the end of file by convention.
+	if b.Len() == 0 {
+		if err := s.ackCurrentChunk(addr); err != nil {
 			return nil, err
 		}
-		c.restBuf.Reset()
-		off += n
-	}
-	n, err := c.buf.Read(scratch[off:])
-	if err != nil {
-		return nil, err
+
+		return nil, io.EOF
 	}
 
-	truncated, rest, err := cutToLastMessage(scratch[0 : n+off])
-	if err != nil {
-		return nil, err
-	}
-
-	c.restBuf.Reset()
-	c.restBuf.Write(rest)
-
-	return truncated, nil
+	s.off += uint64(b.Len())
+	return b.Bytes(), nil
 }
 
-func cutToLastMessage(res []byte) (truncated []byte, rest []byte, err error) {
-
-	n := len(res)
-	if n == 0 {
-		return res, nil, nil
+func (s *Simple) ackCurrentChunk(addr string) error {
+	resp, err := s.cl.Get(addr + "/ack")
+	if err != nil {
+		return err
 	}
 
-	if res[n-1] == '\n' {
-		return res, nil, nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var b bytes.Buffer
+		io.Copy(&b, resp.Body)
+		return fmt.Errorf("http code %d, %s", resp.StatusCode, b.String())
 	}
 
-	lastPos := bytes.LastIndexByte(res, '\n')
-
-	if lastPos < 0 {
-		return nil, nil, errBufTooSmall
-	}
-	return res[0 : lastPos+1], res[lastPos+1:], nil
+	io.Copy(ioutil.Discard, resp.Body)
+	return nil
 }
