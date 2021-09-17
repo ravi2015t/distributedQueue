@@ -1,0 +1,9 @@
+{
+    "editor.fontFamily": "'Ubuntu Mono'",
+    "editor.fontSize": 15,
+    "editor.fontWeight": "normal",
+    "workbench.preferredDarkColorTheme": "Default Light+",
+    "terminal.integrated.fontSize": 14,
+    "terminal.integrated.fontFamily": "'Ubuntu Mono'",
+    "workbench.colorTheme": "Monokai Dimmed",
+}
