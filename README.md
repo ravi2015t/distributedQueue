@@ -11,4 +11,5 @@ A distributed queue like Kafka
 
 1. Data is split into chunks and stored as files on disk. 
 2. Client readers read the chunks by specifying the offset. 
-2. Readers explicitly acknowledge the data that was read. 
+3. Readers explicitly acknowledge the data that was read. 
+4. Every message is separated by \n End of line. 

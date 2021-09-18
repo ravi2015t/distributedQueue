@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"go/build"
 	"io"
@@ -40,29 +41,35 @@ func runTest() error {
 	}
 
 	log.Printf("Compiling distributedQueue")
-	err := exec.Command("go", "install", "-v", "github.com/ravi2015t/distributedQueue").Run()
+	out, err := exec.Command("go", "install", "-v", "github.com/ravi2015t/distributedQueue").CombinedOutput()
 	if err != nil {
 		log.Printf("Failed to build: %v", err)
+		return fmt.Errorf("compilation failed: %v (out: %s)", err, string(out))
 	}
 
 	// TODO: make port random
-	port := 7537 // "test" in l33t
+	port := 7357 // "test" in l33t
 
 	// TODO: make db path random
-	dbPath := "/tmp/distributedQueue.db"
-	os.Remove(dbPath)
+	dbPath := "/tmp/distributedQueue"
+	os.RemoveAll(dbPath)
+	os.Mkdir(dbPath, 0777)
 
 	log.Printf("Running distributedQueue on port %d", port)
 
-	cmd := exec.Command(goPath+"/bin/distributedQueue", "-filename="+dbPath, fmt.Sprintf("-port=%d", port))
+	cmd := exec.Command(goPath+"/bin/distributedQueue", "-dirname="+dbPath, fmt.Sprintf("-port=%d", port))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	cmd.Start()
 	defer cmd.Process.Kill()
 
 	log.Printf("Waiting for the port localhost:%d to open", port)
-	for {
-		timeout := time.Millisecond * 100
+	for i := 0; i <= 100; i++ {
+		timeout := time.Millisecond * 50
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", fmt.Sprint(port)), timeout)
 		if err != nil {
+			time.Sleep(timeout)
 			continue
 		}
 		conn.Close()
@@ -144,7 +151,7 @@ func receive(s *client.Simple) (sum int64, err error) {
 
 	for {
 		res, err := s.Receive(buf)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return sum, nil
 		} else if err != nil {
 			return 0, err
@@ -158,8 +165,10 @@ func receive(s *client.Simple) (sum int64, err error) {
 			if err != nil {
 				return 0, err
 			}
+
 			sum += int64(i)
 		}
+
 		parseTime += time.Since(start)
 	}
 }
