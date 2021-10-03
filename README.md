@@ -13,3 +13,6 @@ A distributed queue like Kafka
 2. Client readers read the chunks by specifying the offset. 
 3. Readers explicitly acknowledge the data that was read. 
 4. Every message is separated by \n End of line. 
+
+
+

@@ -18,8 +18,6 @@ var (
 func main() {
 	flag.Parse()
 
-	var backend *server.OnDisk
-
 	if *dirname == "" {
 		log.Fatalf("The flag `--dirname` must be provided")
 	}
@@ -32,7 +30,10 @@ func main() {
 	fp.Close()
 	os.Remove(fp.Name())
 
-	backend = server.NewOnDisk(*dirname)
+	backend, err := server.NewOnDisk(*dirname)
+	if err != nil {
+		log.Fatalf("Could not initialise on-disk backend: %v", err)
+	}
 
 	s := web.NewServer(backend, *port)
 
