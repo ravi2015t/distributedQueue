@@ -83,7 +83,7 @@ func (s *OnDisk) Write(msgs []byte) error {
 		s.lastChunkIdx++
 	}
 
-	fp, err := s.getFileDescriptor(s.lastChunk)
+	fp, err := s.getFileDescriptor(s.lastChunk, true)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (s *OnDisk) Write(msgs []byte) error {
 	return err
 }
 
-func (s *OnDisk) getFileDescriptor(chunk string) (*os.File, error) {
+func (s *OnDisk) getFileDescriptor(chunk string, write bool) (*os.File, error) {
 	s.fpsMu.Lock()
 	defer s.fpsMu.Unlock()
 
@@ -101,10 +101,15 @@ func (s *OnDisk) getFileDescriptor(chunk string) (*os.File, error) {
 	if ok {
 		return fp, nil
 	}
+	fl := os.O_RDONLY
+	if write {
+		fl = os.O_CREATE | os.O_RDWR | os.O_EXCL
+	}
 
-	fp, err := os.OpenFile(filepath.Join(s.dirname, chunk), os.O_CREATE|os.O_RDWR, 0666)
+	fileName := filepath.Join(s.dirname, chunk)
+	fp, err := os.OpenFile(fileName, fl, 0666)
 	if err != nil {
-		return nil, fmt.Errorf("create file %q: %s", fp.Name(), err)
+		return nil, fmt.Errorf("create file %q: %s", fileName, err)
 	}
 
 	_, err = fp.Seek(0, io.SeekEnd)
@@ -139,7 +144,7 @@ func (s *OnDisk) Read(chunk string, off uint64, maxSize uint64, w io.Writer) err
 		return fmt.Errorf("stat %q: %w", chunk, err)
 	}
 
-	fp, err := s.getFileDescriptor(chunk)
+	fp, err := s.getFileDescriptor(chunk, false)
 	if err != nil {
 		return fmt.Errorf("getFileDescriptor(%q): %v", chunk, err)
 	}
