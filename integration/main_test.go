@@ -35,7 +35,7 @@ func TestSimpleClientAndServerSequentially(t *testing.T) {
 }
 
 func simpleClientAndServer(t *testing.T, concurrent bool) {
-
+	t.Helper()
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
 
 	port, err := freeport.GetFreePort()
@@ -47,7 +47,7 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(dbPath)
+	t.Cleanup(func() { os.RemoveAll(dbPath) })
 	os.Mkdir(dbPath, 0777)
 
 	// Initialise the database contents with

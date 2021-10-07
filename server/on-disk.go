@@ -112,11 +112,6 @@ func (s *OnDisk) getFileDescriptor(chunk string, write bool) (*os.File, error) {
 		return nil, fmt.Errorf("create file %q: %s", fileName, err)
 	}
 
-	_, err = fp.Seek(0, io.SeekEnd)
-	if err != nil {
-		return nil, fmt.Errorf("seek file %q until the end: %v", fp.Name(), err)
-	}
-
 	s.fps[chunk] = fp
 	return fp, nil
 }
@@ -184,7 +179,7 @@ func (s *OnDisk) isLastChunk(chunk string) bool {
 }
 
 // Ack marks the current chunk as done and deletes it's contents.
-func (s *OnDisk) Ack(chunk string, size int64) error {
+func (s *OnDisk) Ack(chunk string, size uint64) error {
 	if s.isLastChunk(chunk) {
 		return fmt.Errorf("could not delete incomplete chunk %q", chunk)
 	}
@@ -196,7 +191,7 @@ func (s *OnDisk) Ack(chunk string, size int64) error {
 		return fmt.Errorf("stat %q: %w", chunk, err)
 	}
 
-	if fi.Size() > size {
+	if uint64(fi.Size()) > size {
 		return fmt.Errorf("file was not fully processed: the supplied processed size %d is smaller than the chunk file size %d", size, fi.Size())
 	}
 
