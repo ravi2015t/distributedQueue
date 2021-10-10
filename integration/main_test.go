@@ -50,10 +50,13 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 	t.Cleanup(func() { os.RemoveAll(dbPath) })
 	os.Mkdir(dbPath, 0777)
 
+	categoryPath := filepath.Join(dbPath, "numbers")
+	os.Mkdir(categoryPath, 0777)
+
 	// Initialise the database contents with
 	// a not easy-to-guess contents that must
 	// be preserved when writing to this directory.
-	ioutil.WriteFile(filepath.Join(dbPath, "chunk1"), []byte("12345\n"), 0666)
+	ioutil.WriteFile(filepath.Join(categoryPath, "chunk1"), []byte("12345\n"), 0666)
 
 	log.Printf("Running distributedQueue on port %d", port)
 
@@ -175,7 +178,7 @@ func send(s *client.Simple) (sum int64, err error) {
 
 		if len(buf) >= maxBufferSize {
 			start := time.Now()
-			if err := s.Send(buf); err != nil {
+			if err := s.Send("numbers", buf); err != nil {
 				return 0, err
 			}
 			networkTime += time.Since(start)
@@ -187,7 +190,7 @@ func send(s *client.Simple) (sum int64, err error) {
 
 	if len(buf) != 0 {
 		start := time.Now()
-		if err := s.Send(buf); err != nil {
+		if err := s.Send("numbers", buf); err != nil {
 			return 0, err
 		}
 		networkTime += time.Since(start)
@@ -218,7 +221,7 @@ func receive(s *client.Simple, sendFinishedCh chan bool) (sum int64, err error) 
 		default:
 		}
 
-		res, err := s.Receive(buf)
+		res, err := s.Receive("numbers", buf)
 		if errors.Is(err, io.EOF) {
 			if sendFinished {
 				return sum, nil

@@ -74,6 +74,7 @@ func (s *OnDisk) initLastChunkIdx(dirname string) error {
 
 // Write accepts the messages from the clients and stores them.
 func (s *OnDisk) Write(msgs []byte) error {
+
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 

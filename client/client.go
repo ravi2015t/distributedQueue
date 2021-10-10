@@ -9,6 +9,8 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"github.com/ravi2015t/distributedQueue/protocol"
 )
@@ -32,8 +34,12 @@ func NewSimple(addrs []string) *Simple {
 }
 
 // Send sends the messages to the distributedQueue servers.
-func (s *Simple) Send(msgs []byte) error {
-	resp, err := s.cl.Post(s.addrs[0]+"/write", "application/octet-stream", bytes.NewReader(msgs))
+func (s *Simple) Send(category string, msgs []byte) error {
+
+	u := url.Values{}
+	u.Add("category", category)
+
+	resp, err := s.cl.Post(s.addrs[0]+"/write?"+u.Encode(), "application/octet-stream", bytes.NewReader(msgs))
 	if err != nil {
 		return err
 	}
@@ -55,13 +61,13 @@ var errRetry = errors.New("please retry the request")
 // Receive will either wait for new messages or return an
 // error in case something goes wrong.
 // The scratch buffer can be used to read the data.
-func (s *Simple) Receive(scratch []byte) ([]byte, error) {
+func (s *Simple) Receive(category string, scratch []byte) ([]byte, error) {
 	if scratch == nil {
 		scratch = make([]byte, defaultScratchSize)
 	}
 
 	for {
-		res, err := s.receive(scratch)
+		res, err := s.receive(category, scratch)
 		if err == errRetry {
 			continue
 		}
@@ -69,15 +75,20 @@ func (s *Simple) Receive(scratch []byte) ([]byte, error) {
 	}
 }
 
-func (s *Simple) receive(scratch []byte) ([]byte, error) {
+func (s *Simple) receive(category string, scratch []byte) ([]byte, error) {
 	addrIdx := rand.Intn(len(s.addrs))
 	addr := s.addrs[addrIdx]
 
-	if err := s.updateCurrentChunk(addr); err != nil {
+	if err := s.updateCurrentChunk(category, addr); err != nil {
 		return nil, fmt.Errorf("updateCurrentChunk: %w", err)
 	}
 
-	readURL := fmt.Sprintf("%s/read?off=%d&maxSize=%d&chunk=%s", addr, s.off, len(scratch), s.curChunk.Name)
+	u := url.Values{}
+	u.Add("off", strconv.Itoa(int(s.off)))
+	u.Add("maxSize", strconv.Itoa(len(scratch)))
+	u.Add("chunk", s.curChunk.Name)
+	u.Add("category", category)
+	readURL := fmt.Sprintf("%s/read?%s", addr, u.Encode())
 
 	resp, err := s.cl.Get(readURL)
 	if err != nil {
@@ -101,7 +112,7 @@ func (s *Simple) receive(scratch []byte) ([]byte, error) {
 	// 0 bytes read but no errors means the end of file by convention.
 	if b.Len() == 0 {
 		if !s.curChunk.Complete {
-			if err := s.updateCurrentChunkCompleteStatus(addr); err != nil {
+			if err := s.updateCurrentChunkCompleteStatus(category, addr); err != nil {
 				return nil, fmt.Errorf("updateCurrentChunkCompleteStatus: %v", err)
 			}
 
@@ -124,7 +135,7 @@ func (s *Simple) receive(scratch []byte) ([]byte, error) {
 			return nil, errRetry
 		}
 
-		if err := s.ackCurrentChunk(addr); err != nil {
+		if err := s.ackCurrentChunk(category, addr); err != nil {
 			return nil, fmt.Errorf("ack current chunk: %v", err)
 		}
 
@@ -139,12 +150,12 @@ func (s *Simple) receive(scratch []byte) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func (s *Simple) updateCurrentChunk(addr string) error {
+func (s *Simple) updateCurrentChunk(category string, addr string) error {
 	if s.curChunk.Name != "" {
 		return nil
 	}
 
-	chunks, err := s.listChunks(addr)
+	chunks, err := s.listChunks(category, addr)
 	if err != nil {
 		return fmt.Errorf("listChunks failed: %v", err)
 	}
@@ -166,8 +177,8 @@ func (s *Simple) updateCurrentChunk(addr string) error {
 	return nil
 }
 
-func (s *Simple) updateCurrentChunkCompleteStatus(addr string) error {
-	chunks, err := s.listChunks(addr)
+func (s *Simple) updateCurrentChunkCompleteStatus(category string, addr string) error {
+	chunks, err := s.listChunks(category, addr)
 	if err != nil {
 		return fmt.Errorf("listChunks failed: %v", err)
 	}
@@ -184,8 +195,12 @@ func (s *Simple) updateCurrentChunkCompleteStatus(addr string) error {
 	return nil
 }
 
-func (s *Simple) listChunks(addr string) ([]protocol.Chunk, error) {
-	listURL := fmt.Sprintf("%s/listChunks", addr)
+func (s *Simple) listChunks(category string, addr string) ([]protocol.Chunk, error) {
+
+	u := url.Values{}
+	u.Add("category", category)
+
+	listURL := fmt.Sprintf("%s/listChunks?%s", addr, u.Encode())
 
 	resp, err := s.cl.Get(listURL)
 	if err != nil {
@@ -211,8 +226,12 @@ func (s *Simple) listChunks(addr string) ([]protocol.Chunk, error) {
 	return res, nil
 }
 
-func (s *Simple) ackCurrentChunk(addr string) error {
-	resp, err := s.cl.Get(fmt.Sprintf(addr+"/ack?chunk=%s&size=%d", s.curChunk.Name, s.off))
+func (s *Simple) ackCurrentChunk(category string, addr string) error {
+	u := url.Values{}
+	u.Add("chunk", s.curChunk.Name)
+	u.Add("size", strconv.Itoa(int(s.off)))
+	u.Add("category", category)
+	resp, err := s.cl.Get(fmt.Sprintf(addr+"/ack?%s", u.Encode()))
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ravi2015t/distributedQueue/server"
 	"github.com/ravi2015t/distributedQueue/web"
 )
 
@@ -19,12 +18,7 @@ func InitAndServe(dirname string, port uint) error {
 	fp.Close()
 	os.Remove(fp.Name())
 
-	backend, err := server.NewOnDisk(dirname)
-	if err != nil {
-		return fmt.Errorf("could not initialise on-disk backend: %v", err)
-	}
-
-	s := web.NewServer(backend, port)
+	s := web.NewServer(dirname, port)
 
 	log.Printf("Listening connections")
 	return s.Serve()
