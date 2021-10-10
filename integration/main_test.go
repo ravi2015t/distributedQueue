@@ -200,6 +200,8 @@ func send(s *client.Simple) (sum int64, err error) {
 	return sum, nil
 }
 
+var randomErr = errors.New("a random temporary error occured")
+
 func receive(s *client.Simple, sendFinishedCh chan bool) (sum int64, err error) {
 	buf := make([]byte, maxBufferSize)
 
@@ -212,8 +214,10 @@ func receive(s *client.Simple, sendFinishedCh chan bool) (sum int64, err error) 
 	trimNL := func(r rune) bool { return r == '\n' }
 
 	sendFinished := false
-
+	loopCnt := 0
 	for {
+		loopCnt++
+
 		select {
 		case <-sendFinishedCh:
 			log.Printf("Receive: got information that send finished")
@@ -221,8 +225,30 @@ func receive(s *client.Simple, sendFinishedCh chan bool) (sum int64, err error) 
 		default:
 		}
 
-		res, err := s.Receive("numbers", buf)
-		if errors.Is(err, io.EOF) {
+		err := s.Process("numbers", buf, func(res []byte) error {
+
+			if loopCnt%10 == 0 {
+				return randomErr
+			}
+
+			start := time.Now()
+
+			ints := strings.Split(strings.TrimRightFunc(string(res), trimNL), "\n")
+			for _, str := range ints {
+				i, err := strconv.Atoi(str)
+				if err != nil {
+					return err
+				}
+				sum += int64(i)
+			}
+
+			parseTime += time.Since(start)
+			return nil
+		})
+
+		if errors.Is(err, randomErr) {
+			continue
+		} else if errors.Is(err, io.EOF) {
 			if sendFinished {
 				return sum, nil
 			}
@@ -232,19 +258,5 @@ func receive(s *client.Simple, sendFinishedCh chan bool) (sum int64, err error) 
 		} else if err != nil {
 			return 0, err
 		}
-
-		start := time.Now()
-
-		ints := strings.Split(strings.TrimRightFunc(string(res), trimNL), "\n")
-		for _, str := range ints {
-			i, err := strconv.Atoi(str)
-			if err != nil {
-				return 0, err
-			}
-
-			sum += int64(i)
-		}
-
-		parseTime += time.Since(start)
 	}
 }

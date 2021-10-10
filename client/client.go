@@ -58,29 +58,31 @@ func (s *Simple) Send(category string, msgs []byte) error {
 
 var errRetry = errors.New("please retry the request")
 
-// Receive will either wait for new messages or return an
+// Process will either wait for new messages or return an
 // error in case something goes wrong.
 // The scratch buffer can be used to read the data.
-func (s *Simple) Receive(category string, scratch []byte) ([]byte, error) {
+//The read offset will only advance only if the process() function
+//returns no errors for the data being processed.
+func (s *Simple) Process(category string, scratch []byte, processFn func([]byte) error) error {
 	if scratch == nil {
 		scratch = make([]byte, defaultScratchSize)
 	}
 
 	for {
-		res, err := s.receive(category, scratch)
+		err := s.process(category, scratch, processFn)
 		if err == errRetry {
 			continue
 		}
-		return res, err
+		return err
 	}
 }
 
-func (s *Simple) receive(category string, scratch []byte) ([]byte, error) {
+func (s *Simple) process(category string, scratch []byte, processFn func([]byte) error) error {
 	addrIdx := rand.Intn(len(s.addrs))
 	addr := s.addrs[addrIdx]
 
 	if err := s.updateCurrentChunk(category, addr); err != nil {
-		return nil, fmt.Errorf("updateCurrentChunk: %w", err)
+		return fmt.Errorf("updateCurrentChunk: %w", err)
 	}
 
 	u := url.Values{}
@@ -92,7 +94,7 @@ func (s *Simple) receive(category string, scratch []byte) ([]byte, error) {
 
 	resp, err := s.cl.Get(readURL)
 	if err != nil {
-		return nil, fmt.Errorf("read %q: %v", readURL, err)
+		return fmt.Errorf("read %q: %v", readURL, err)
 	}
 
 	defer resp.Body.Close()
@@ -100,54 +102,57 @@ func (s *Simple) receive(category string, scratch []byte) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		var b bytes.Buffer
 		io.Copy(&b, resp.Body)
-		return nil, fmt.Errorf("http code %d, %s", resp.StatusCode, b.String())
+		return fmt.Errorf("http code %d, %s", resp.StatusCode, b.String())
 	}
 
 	b := bytes.NewBuffer(scratch[0:0])
 	_, err = io.Copy(b, resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("writing response: %v", err)
+		return fmt.Errorf("writing response: %v", err)
 	}
 
 	// 0 bytes read but no errors means the end of file by convention.
 	if b.Len() == 0 {
 		if !s.curChunk.Complete {
 			if err := s.updateCurrentChunkCompleteStatus(category, addr); err != nil {
-				return nil, fmt.Errorf("updateCurrentChunkCompleteStatus: %v", err)
+				return fmt.Errorf("updateCurrentChunkCompleteStatus: %v", err)
 			}
 
 			if !s.curChunk.Complete {
 				// We actually did read until the end and no new data appeared
 				// in between requests.
 				if s.off >= s.curChunk.Size {
-					return nil, io.EOF
+					return io.EOF
 				}
 
 				// New data appeared in between us sending the read request and
 				// the chunk becoming complete.
-				return nil, errRetry
+				return errRetry
 			}
 		}
 
 		// The chunk has been marked complete. However, new data appeared
 		// in between us sending the read request and the chunk becoming complete.
 		if s.off < s.curChunk.Size {
-			return nil, errRetry
+			return errRetry
 		}
 
 		if err := s.ackCurrentChunk(category, addr); err != nil {
-			return nil, fmt.Errorf("ack current chunk: %v", err)
+			return fmt.Errorf("ack current chunk: %v", err)
 		}
 
 		// need to read the next chunk so that we do not return empty
 		// response
 		s.curChunk = protocol.Chunk{}
 		s.off = 0
-		return nil, errRetry
+		return errRetry
 	}
 
-	s.off += uint64(b.Len())
-	return b.Bytes(), nil
+	err = processFn(b.Bytes())
+	if err == nil {
+		s.off += uint64(b.Len())
+	}
+	return nil
 }
 
 func (s *Simple) updateCurrentChunk(category string, addr string) error {
