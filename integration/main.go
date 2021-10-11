@@ -5,11 +5,26 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/ravi2015t/distributedQueue/web"
+	"go.etcd.io/etcd/client"
 )
 
-func InitAndServe(dirname string, port uint) error {
+func InitAndServe(etcdAddr string, dirname string, port uint) error {
+	cfg := client.Config{
+		Endpoints:               strings.Split(etcdAddr, ","),
+		Transport:               client.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+
+	c, err := client.New(cfg)
+	if err != nil {
+		return fmt.Errorf("creating etcd client: %v", err)
+	}
+	kapi := client.NewKeysAPI(c)
+
 	filename := filepath.Join(dirname, "write_test")
 	fp, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
@@ -18,7 +33,7 @@ func InitAndServe(dirname string, port uint) error {
 	fp.Close()
 	os.Remove(fp.Name())
 
-	s := web.NewServer(dirname, port)
+	s := web.NewServer(kapi, dirname, port)
 
 	log.Printf("Listening connections")
 	return s.Serve()

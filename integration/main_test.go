@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -38,9 +39,24 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 	t.Helper()
 	log.SetFlags(log.Flags() | log.Lmicroseconds)
 
+	etcdPeerPort, err := freeport.GetFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free etcd peer port %v", err)
+	}
+
+	etcdPort, err := freeport.GetFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free etcdPort %v", err)
+	}
+
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		t.Fatalf("Failed to get free port %v", err)
+	}
+
+	etcdPath, err := os.MkdirTemp(os.TempDir(), "etcd")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir for etcd: %v", err)
 	}
 
 	dbPath, err := os.MkdirTemp(os.TempDir(), "distributedQueue")
@@ -48,6 +64,7 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dbPath) })
+	t.Cleanup(func() { os.RemoveAll(etcdPath) })
 	os.Mkdir(dbPath, 0777)
 
 	categoryPath := filepath.Join(dbPath, "numbers")
@@ -62,8 +79,21 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- InitAndServe(dbPath, uint(port))
+		errCh <- InitAndServe(fmt.Sprintf("http://localhost:%d/", etcdPort), dbPath, uint(port))
 	}()
+
+	etcdArgs := []string{"--data-dir", etcdPath,
+		"--listen-client-urls", fmt.Sprintf("http://localhost:%d", etcdPort),
+		"--advertise-client-urls", fmt.Sprintf("http://localhost:%d", etcdPort),
+		"--listen-peer-urls", fmt.Sprintf("http://localhost:%d", etcdPeerPort)}
+	cmd := exec.Command("etcd", etcdArgs...,
+	)
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Could not run etcd: %v", err)
+	}
+
+	t.Cleanup(func() { cmd.Process.Kill() })
 
 	log.Printf("Waiting for the port localhost:%d to open", port)
 	for i := 0; i <= 100; i++ {

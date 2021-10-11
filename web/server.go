@@ -13,10 +13,12 @@ import (
 
 	"github.com/ravi2015t/distributedQueue/server"
 	"github.com/valyala/fasthttp"
+	"go.etcd.io/etcd/client"
 )
 
 // Server implements a web server
 type Server struct {
+	etcd     client.KeysAPI
 	dirname  string
 	port     uint
 	m        sync.Mutex
@@ -24,8 +26,9 @@ type Server struct {
 }
 
 // NewServer creates *Server
-func NewServer(dirname string, port uint) *Server {
+func NewServer(etcdApi client.KeysAPI, dirname string, port uint) *Server {
 	return &Server{
+		etcd:     etcdApi,
 		dirname:  dirname,
 		port:     port,
 		storages: make(map[string]*server.OnDisk),
