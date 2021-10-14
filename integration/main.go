@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ravi2015t/distributedQueue/server/replication"
 	"github.com/ravi2015t/distributedQueue/web"
 	"go.etcd.io/etcd/clientv3"
 )
@@ -45,7 +46,7 @@ func InitAndServe(etcdAddr string, instanceName string, dirname string, listenAd
 	fp.Close()
 	os.Remove(fp.Name())
 
-	s := web.NewServer(etcdClient, dirname, instanceName, listenAddr)
+	s := web.NewServer(etcdClient, dirname, instanceName, listenAddr, replication.NewStorage(etcdClient, instanceName))
 
 	log.Printf("Listening connections")
 	return s.Serve()

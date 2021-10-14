@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,7 +86,7 @@ func TestReadWrite(t *testing.T) {
 
 	srv := testNewOnDisk(t, getTempDir(t))
 	want := "first\nsecond\nthird\n"
-	if err := srv.Write([]byte(want)); err != nil {
+	if err := srv.Write(context.Background(), []byte(want)); err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
 
@@ -124,10 +125,16 @@ func TestReadWrite(t *testing.T) {
 	}
 }
 
+type nilHooks struct{}
+
+func (n *nilHooks) BeforeCreatingChunk(ctx context.Context, category string, fileName string) error {
+	return nil
+}
+
 func testNewOnDisk(t *testing.T, dir string) *OnDisk {
 	t.Helper()
 
-	srv, err := NewOnDisk(dir, "moscow")
+	srv, err := NewOnDisk(dir, "test", "moscow", &nilHooks{})
 	if err != nil {
 		t.Fatalf("New on Disk failed: %v", err)
 	}
@@ -158,7 +165,7 @@ func getTempDir(t *testing.T) string {
 func TestAckOfLastChunk(t *testing.T) {
 	srv := testNewOnDisk(t, getTempDir(t))
 	want := "first\nsecond\nthird\n"
-	if err := srv.Write([]byte(want)); err != nil {
+	if err := srv.Write(context.Background(), []byte(want)); err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}
 

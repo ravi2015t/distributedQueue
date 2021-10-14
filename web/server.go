@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/ravi2015t/distributedQueue/server"
+	"github.com/ravi2015t/distributedQueue/server/replication"
 	"github.com/valyala/fasthttp"
 	"go.etcd.io/etcd/clientv3"
 )
@@ -22,17 +23,20 @@ type Server struct {
 	dirname      string
 	instanceName string
 	listenAddr   string
-	m            sync.Mutex
-	storages     map[string]*server.OnDisk
+	replStorage  *replication.Storage
+
+	m        sync.Mutex
+	storages map[string]*server.OnDisk
 }
 
 // NewServer creates *Server
-func NewServer(etcdApi *clientv3.Client, dirname string, instanceName string, listenAddr string) *Server {
+func NewServer(etcdApi *clientv3.Client, dirname string, instanceName string, listenAddr string, replStorage *replication.Storage) *Server {
 	return &Server{
 		etcd:         etcdApi,
 		dirname:      dirname,
 		listenAddr:   listenAddr,
 		instanceName: instanceName,
+		replStorage:  replStorage,
 		storages:     make(map[string]*server.OnDisk),
 	}
 }
@@ -87,7 +91,7 @@ func (s *Server) getStorageForCategory(category string) (*server.OnDisk, error) 
 		return nil, fmt.Errorf("creating directory for the category failed: %v", err)
 	}
 
-	storage, err := server.NewOnDisk(dir, s.instanceName)
+	storage, err := server.NewOnDisk(dir, category, s.instanceName, s.replStorage)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +114,7 @@ func (s *Server) writeHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err := storage.Write(ctx.Request.Body()); err != nil {
+	if err := storage.Write(ctx, ctx.Request.Body()); err != nil {
 		ctx.SetStatusCode(fasthttp.StatusInternalServerError)
 		ctx.WriteString(err.Error())
 		return

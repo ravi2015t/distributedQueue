@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,11 +22,17 @@ const maxFileChunkSize = 20 * 1024 * 1024 // bytes
 var errBufTooSmall = errors.New("the buffer is too small to contain a single message")
 var filenameRegexp = regexp.MustCompile("^chunk([0-9]+)$")
 
+type StorageHooks interface {
+	BeforeCreatingChunk(ctx context.Context, category string, fileName string) error
+}
+
 // OnDisk stores all the data on disk.
 type OnDisk struct {
 	dirname      string
+	category     string
 	instanceName string
 
+	repl          StorageHooks
 	writeMu       sync.Mutex
 	lastChunk     string
 	lastChunkSize uint64
@@ -36,10 +43,12 @@ type OnDisk struct {
 }
 
 // NewOnDisk creates a server that stores all it's data on disk.
-func NewOnDisk(dirname string, instanceName string) (*OnDisk, error) {
+func NewOnDisk(dirname, category, instanceName string, repl StorageHooks) (*OnDisk, error) {
 	s := &OnDisk{
 		dirname:      dirname,
+		category:     category,
 		instanceName: instanceName,
+		repl:         repl,
 		fps:          make(map[string]*os.File),
 	}
 
@@ -82,7 +91,7 @@ func (s *OnDisk) initLastChunkIdx(dirname string) error {
 }
 
 // Write accepts the messages from the clients and stores them.
-func (s *OnDisk) Write(msgs []byte) error {
+func (s *OnDisk) Write(ctx context.Context, msgs []byte) error {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -91,6 +100,10 @@ func (s *OnDisk) Write(msgs []byte) error {
 		s.lastChunk = fmt.Sprintf("%s-chunk%d", s.instanceName, s.lastChunkIdx)
 		s.lastChunkSize = 0
 		s.lastChunkIdx++
+
+		if err := s.repl.BeforeCreatingChunk(ctx, s.category, s.lastChunk); err != nil {
+			return fmt.Errorf("before creating a new chunk: %v", err)
+		}
 	}
 
 	fp, err := s.getFileDescriptor(s.lastChunk, true)
