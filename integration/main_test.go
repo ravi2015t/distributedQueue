@@ -77,42 +77,32 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 
 	log.Printf("Running distributedQueue on port %d", port)
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- InitAndServe(fmt.Sprintf("http://localhost:%d/", etcdPort), dbPath, uint(port))
-	}()
-
 	etcdArgs := []string{"--data-dir", etcdPath,
 		"--listen-client-urls", fmt.Sprintf("http://localhost:%d", etcdPort),
 		"--advertise-client-urls", fmt.Sprintf("http://localhost:%d", etcdPort),
 		"--listen-peer-urls", fmt.Sprintf("http://localhost:%d", etcdPeerPort)}
-	cmd := exec.Command("etcd", etcdArgs...,
-	)
+
+	log.Printf("Running `etcd %s`", strings.Join(etcdArgs, " "))
+	cmd := exec.Command("etcd", etcdArgs...)
 
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("Could not run etcd: %v", err)
 	}
 
-	t.Cleanup(func() { cmd.Process.Kill() })
+	t.Cleanup(func() {
+		cmd.Process.Kill()
+	})
 
-	log.Printf("Waiting for the port localhost:%d to open", port)
-	for i := 0; i <= 100; i++ {
-		select {
-		case err := <-errCh:
-			if err != nil {
-				t.Fatalf("InitAndServe failed: %v", err)
-			}
-		default:
-		}
-		timeout := time.Millisecond * 50
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", fmt.Sprint(port)), timeout)
-		if err != nil {
-			time.Sleep(timeout)
-			continue
-		}
-		conn.Close()
-		break
-	}
+	log.Printf("Waiting for the etcd port localhost:%d to open", etcdPort)
+	waitForPort(t, etcdPort, make(chan error, 1))
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- InitAndServe(fmt.Sprintf("http://localhost:%d/", etcdPort), "distribQue", dbPath, fmt.Sprintf("localhost:%d", port))
+	}()
+
+	log.Printf("Waiting for the distrib port localhost:%d to open", port)
+	waitForPort(t, port, errCh)
 
 	log.Printf("Starting the test")
 
@@ -150,6 +140,28 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 type sumAndErr struct {
 	sum int64
 	err error
+}
+
+func waitForPort(t *testing.T, port int, errCh chan error) {
+	t.Helper()
+	for i := 0; i <= 100; i++ {
+		select {
+		case err := <-errCh:
+			if err != nil {
+				t.Fatalf("InitAndServe failed: %v", err)
+			}
+		default:
+		}
+		timeout := time.Millisecond * 50
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", fmt.Sprint(port)), timeout)
+		if err != nil {
+			time.Sleep(timeout)
+			continue
+		}
+		conn.Close()
+		break
+	}
+
 }
 
 func sendAndReceiveConcurrently(s *client.Simple) (want, got int64, err error) {

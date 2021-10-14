@@ -22,7 +22,8 @@ var filenameRegexp = regexp.MustCompile("^chunk([0-9]+)$")
 
 // OnDisk stores all the data on disk.
 type OnDisk struct {
-	dirname string
+	dirname      string
+	instanceName string
 
 	writeMu       sync.Mutex
 	lastChunk     string
@@ -34,10 +35,11 @@ type OnDisk struct {
 }
 
 // NewOnDisk creates a server that stores all it's data on disk.
-func NewOnDisk(dirname string) (*OnDisk, error) {
+func NewOnDisk(dirname string, instanceName string) (*OnDisk, error) {
 	s := &OnDisk{
-		dirname: dirname,
-		fps:     make(map[string]*os.File),
+		dirname:      dirname,
+		instanceName: instanceName,
+		fps:          make(map[string]*os.File),
 	}
 
 	if err := s.initLastChunkIdx(dirname); err != nil {

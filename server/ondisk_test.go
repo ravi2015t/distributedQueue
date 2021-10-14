@@ -127,7 +127,7 @@ func TestReadWrite(t *testing.T) {
 func testNewOnDisk(t *testing.T, dir string) *OnDisk {
 	t.Helper()
 
-	srv, err := NewOnDisk(dir)
+	srv, err := NewOnDisk(dir, "moscow")
 	if err != nil {
 		t.Fatalf("New on Disk failed: %v", err)
 	}

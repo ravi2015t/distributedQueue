@@ -13,25 +13,27 @@ import (
 
 	"github.com/ravi2015t/distributedQueue/server"
 	"github.com/valyala/fasthttp"
-	"go.etcd.io/etcd/client"
+	"go.etcd.io/etcd/clientv3"
 )
 
 // Server implements a web server
 type Server struct {
-	etcd     client.KeysAPI
-	dirname  string
-	port     uint
-	m        sync.Mutex
-	storages map[string]*server.OnDisk
+	etcd         *clientv3.Client
+	dirname      string
+	instanceName string
+	listenAddr   string
+	m            sync.Mutex
+	storages     map[string]*server.OnDisk
 }
 
 // NewServer creates *Server
-func NewServer(etcdApi client.KeysAPI, dirname string, port uint) *Server {
+func NewServer(etcdApi *clientv3.Client, dirname string, instanceName string, listenAddr string) *Server {
 	return &Server{
-		etcd:     etcdApi,
-		dirname:  dirname,
-		port:     port,
-		storages: make(map[string]*server.OnDisk),
+		etcd:         etcdApi,
+		dirname:      dirname,
+		listenAddr:   listenAddr,
+		instanceName: instanceName,
+		storages:     make(map[string]*server.OnDisk),
 	}
 }
 
@@ -85,7 +87,7 @@ func (s *Server) getStorageForCategory(category string) (*server.OnDisk, error) 
 		return nil, fmt.Errorf("creating directory for the category failed: %v", err)
 	}
 
-	storage, err := server.NewOnDisk(dir)
+	storage, err := server.NewOnDisk(dir, s.instanceName)
 	if err != nil {
 		return nil, err
 	}
@@ -203,5 +205,5 @@ func (s *Server) listChunksHandler(ctx *fasthttp.RequestCtx) {
 
 // Serve listens to HTTP connections
 func (s *Server) Serve() error {
-	return fasthttp.ListenAndServe(fmt.Sprintf(":%d", s.port), s.handler)
+	return fasthttp.ListenAndServe(s.listenAddr, s.handler)
 }
