@@ -10,8 +10,8 @@ import (
 func TestInitLastChunkIdx(t *testing.T) {
 	dir := getTempDir(t)
 
-	testCreateFile(t, filepath.Join(dir, "chunk1"))
-	testCreateFile(t, filepath.Join(dir, "chunk10"))
+	testCreateFile(t, filepath.Join(dir, "moscow-chunk1"))
+	testCreateFile(t, filepath.Join(dir, "moscow-chunk10"))
 
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
@@ -28,7 +28,7 @@ func TestInitLastChunkIdx(t *testing.T) {
 func TestGetFileDescriptor(t *testing.T) {
 	dir := getTempDir(t)
 
-	testCreateFile(t, filepath.Join(dir, "chunk1"))
+	testCreateFile(t, filepath.Join(dir, "moscow-chunk1"))
 
 	t.Cleanup(func() { os.RemoveAll(dir) })
 
@@ -42,25 +42,25 @@ func TestGetFileDescriptor(t *testing.T) {
 	}{
 		{
 			desc:     "Read from a existing file shouldn't file",
-			filename: "chunk1",
+			filename: "moscow-chunk1",
 			write:    false,
 			wantErr:  false,
 		},
 		{
 			desc:     "Shouldn't override existing files",
-			filename: "chunk1",
+			filename: "moscow-chunk1",
 			write:    true,
 			wantErr:  true,
 		},
 		{
 			desc:     "Should not be able to read from files that don't exist",
-			filename: "chunk2",
+			filename: "moscow-chunk2",
 			write:    false,
 			wantErr:  true,
 		},
 		{
 			desc:     "Should be able to create files that don't exist",
-			filename: "chunk2",
+			filename: "moscow-chunk2",
 			write:    true,
 			wantErr:  false,
 		},
@@ -179,9 +179,9 @@ func TestAckOfLastChunk(t *testing.T) {
 func TestAckOfCompletedChunk(t *testing.T) {
 	dir := getTempDir(t)
 	srv := testNewOnDisk(t, dir)
-	testCreateFile(t, filepath.Join(dir, "chunk1"))
+	testCreateFile(t, filepath.Join(dir, "moscow-chunk1"))
 
-	if err := srv.Ack("chunk1", 0); err != nil {
+	if err := srv.Ack("moscow-chunk1", 0); err != nil {
 		t.Errorf("Ack(chunk1) = %v, expected no errors", err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/ravi2015t/distributedQueue/protocol"
@@ -55,8 +56,14 @@ func (s *OnDisk) initLastChunkIdx(dirname string) error {
 		return fmt.Errorf("readdir(%q): %v", dirname, err)
 	}
 
+	prefix := s.instanceName + "-"
+
 	for _, fi := range files {
-		res := filenameRegexp.FindStringSubmatch(fi.Name())
+		if !strings.HasPrefix(fi.Name(), prefix) {
+			continue
+		}
+
+		res := filenameRegexp.FindStringSubmatch(strings.TrimPrefix(fi.Name(), prefix))
 		if res == nil {
 			continue
 		}
@@ -81,7 +88,7 @@ func (s *OnDisk) Write(msgs []byte) error {
 	defer s.writeMu.Unlock()
 
 	if s.lastChunk == "" || (s.lastChunkSize+uint64(len(msgs)) > maxFileChunkSize) {
-		s.lastChunk = fmt.Sprintf("chunk%d", s.lastChunkIdx)
+		s.lastChunk = fmt.Sprintf("%s-chunk%d", s.instanceName, s.lastChunkIdx)
 		s.lastChunkSize = 0
 		s.lastChunkIdx++
 	}

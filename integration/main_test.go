@@ -73,7 +73,7 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 	// Initialise the database contents with
 	// a not easy-to-guess contents that must
 	// be preserved when writing to this directory.
-	ioutil.WriteFile(filepath.Join(categoryPath, "chunk1"), []byte("12345\n"), 0666)
+	ioutil.WriteFile(filepath.Join(categoryPath, "moscow-chunk1"), []byte("12345\n"), 0666)
 
 	log.Printf("Running distributedQueue on port %d", port)
 
@@ -98,7 +98,7 @@ func simpleClientAndServer(t *testing.T, concurrent bool) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- InitAndServe(fmt.Sprintf("http://localhost:%d/", etcdPort), "distribQue", dbPath, fmt.Sprintf("localhost:%d", port))
+		errCh <- InitAndServe(fmt.Sprintf("http://localhost:%d/", etcdPort), "moscow", dbPath, fmt.Sprintf("localhost:%d", port))
 	}()
 
 	log.Printf("Waiting for the distrib port localhost:%d to open", port)
